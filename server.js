@@ -7,8 +7,10 @@ const https = require("https");
 const http = require("http");
 
 const sslOptions = {
-  key: fs.readFileSync(path.join(__dirname, "./config/ssl-cert/wopi.key")),
-  cert: fs.readFileSync(path.join(__dirname, "./config/ssl-cert/wopi.crt"))
+  key: fs.readFileSync(path.join(__dirname, "./config/ssl-cert/private.key")),
+  cert: fs.readFileSync(
+    path.join(__dirname, "./config/ssl-cert/certificate.crt")
+  )
 };
 
 /**
@@ -19,7 +21,7 @@ function startServer() {
   const httpsServer = https.createServer(sslOptions, app);
   console.log(
     "  App is running at https://localhost:%d in %s mode",
-    3200,
+    443,
     "test"
   );
 
