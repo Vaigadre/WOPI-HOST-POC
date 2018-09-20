@@ -3,6 +3,8 @@ const Constants = require("../config/constants").Constants;
 const populateActions = require("./wopiDiscovery").populateActions;
 const storage = require("./fileStorageUtil");
 const app = require("../app");
+const FileInfo = require("../models/fileInfo");
+const fs = require("fs");
 /**
  * Called at the beginning of every WOPI request to parse the request and determine the request type *
  */
@@ -14,8 +16,8 @@ module.exports.processWopiRequest = async function(req, res) {
     // Get file data from DB  //
     var file = await storage.getFileInfo(fileId);
 
-    // Check for null file
-    if (file == null) {
+    // Check for undefined file
+    if (file == undefined) {
       response = returnStatus(
         HttpStatusCode.NotFound,
         "File Unknown/User Unauthorized"
@@ -99,7 +101,15 @@ module.exports.processWopiRequest = async function(req, res) {
  */
 
 async function CheckFileInfo(req, res, file) {
-  return file;
+  return {
+    ...file._doc,
+    _id: undefined,
+    lockExpires: undefined,
+    lockValue: undefined,
+    fileStorageId: undefined,
+    createdAt: undefined,
+    updatedAt: undefined
+  };
 }
 
 /**
@@ -117,20 +127,23 @@ async function GetFile(req, res, file) {
 
 async function Lock(req, res, file) {
   let requestLock = req.headers["x-wopi-lock"];
-  if (file.lockValue || (file.lockExpires && file.lockExpires < Date.now())) {
+  if (!file.lockValue || (file.lockExpires && file.lockExpires < Date.now())) {
     // Update the file with a lockValue and LockExpiration
     file.lockValue = requestLock;
     file.lockExpires = getExpiryTime();
-    await File.findByIdAndUpdate(file.id);
+    const result = await storage.updateFileInfo(file);
+    console.log(result);
 
     // Return success 200
+    res.set("x-wopi-lock", file.lockValue);
     return returnStatus(res, 200);
   } else if (file.lockValue === requestLock) {
     // File lock matches existing lock, so refresh lock by extending expiration
     file.lockExpires = getExpiryTime();
-    await File.findByIdAndUpdate(file.id);
-
+    const result = await storage.updateFileInfo(file);
+    console.log(result);
     // Return success 200
+    res.set("x-wopi-lock", file.lockValue);
     return returnStatus(res, 200);
   } else {
     // The file is locked by someone else...return mismatch
@@ -188,7 +201,7 @@ async function RefreshLock(req, res, file) {
     // File lock expired, so clear it out
     file.lockValue = null;
     file.lockExpires = null;
-    await File.findByIdAndUpdate(file.id);
+    await storage.updateFileInfo(file);
 
     // File isn't locked...pass empty Lock in mismatch response
     return returnLockMismatch(res, "", "File isn't locked");
@@ -198,9 +211,10 @@ async function RefreshLock(req, res, file) {
   } else {
     // Extend the expiration
     file.lockExpires = getExpiryTime();
-    await File.findByIdAndUpdate(file.id);
+    await storage.updateFileInfo(file);
 
     // Return success 200
+    res.set("x-wopi-lock", file.lockValue);
     return returnStatus(res, 200);
   }
 }
@@ -216,11 +230,11 @@ async function Unlock(req, res, file) {
   if (!file.lockValue) {
     // File isn't locked...pass empty Lock in mismatch response
     return returnLockMismatch(res, "", "File isn't locked");
-  } else if (file.lockExpires != null && file.lockExpires < Date.now()) {
+  } else if (file.lockExpires && file.lockExpires < Date.now()) {
     // File lock expired, so clear it out
     file.lockValue = null;
     file.lockExpires = null;
-    await File.findByIdAndUpdate(file.id);
+    await storage.updateFileInfo(file);
 
     // File isn't locked...pass empty Lock in mismatch response
     return returnLockMismatch(res, "", "File isn't locked");
@@ -231,9 +245,10 @@ async function Unlock(req, res, file) {
     // Unlock the file
     file.lockValue = null;
     file.lockExpires = null;
-    await File.findByIdAndUpdate(file.id);
+    await storage.updateFileInfo(file);
 
     // Return success 200
+    res.set("x-wopi-lock", file.lockValue);
     return returnStatus(res, 200);
   }
 }
@@ -248,14 +263,14 @@ async function UnlockAndRelock(req, res, file) {
   let requestOldLock = req.headers["x-wopi-oldlock"];
 
   // Ensure the file has a valid lock
-  if (!file.LockValue) {
+  if (!file.lockValue) {
     // File isn't locked...pass empty Lock in mismatch response
     return returnLockMismatch(res, "", "File isn't locked");
-  } else if (file.lockExpires != null && file.lockExpires < Date.now()) {
+  } else if (file.lockExpires && file.lockExpires < Date.now()) {
     // File lock expired, so clear it out
     file.lockValue = null;
     file.lockExpires = null;
-    await File.findByIdAndUpdate(file.id);
+    await storage.updateFileInfo(file);
 
     // File isn't locked...pass empty Lock in mismatch response
     return returnLockMismatch(res, "", "File isn't locked");
@@ -264,11 +279,12 @@ async function UnlockAndRelock(req, res, file) {
     return returnLockMismatch(res, file.lockValue, "Lock mismatch");
   } else {
     // Update the file with a LockValue and LockExpiration
-    file.LockValue = requestLock;
-    file.LockExpires = getExpiryTime();
-    await File.findByIdAndUpdate(file.id);
+    file.lockValue = requestLock;
+    file.lockExpires = getExpiryTime();
+    await storage.updateFileInfo(file);
 
     // Return success 200
+    res.set("x-wopi-lock", file.lockValue);
     return returnStatus(res, 200);
   }
 }
@@ -280,10 +296,40 @@ async function UnlockAndRelock(req, res, file) {
 async function PutFile(req, res, file) {
   // Get the Lock value passed in on the request
   let requestLock = req.headers["x-wopi-lock"];
-
+  let fileData = {};
+  let fileVersion = parseInt(file.Version);
+  fileData.id = file.fileStorageId;
   //Ensure file has valid lock
   if (!file.lockValue) {
-    //
+    // File isn't locked...pass empty Lock in mismatch response
+    if (req._readableState.buffer.head) {
+      fileData.data = req._readableState.buffer.head.data;
+      fileData.version = (fileVersion++).toString();
+      await storage.updateFile(fileData);
+      res.set("x-wopi-lock", file.lockValue);
+      return returnStatus(res, 200);
+    } else {
+      return returnLockMismatch(res, "", "File isn't locked");
+    }
+  } else if (file.lockExpires && file.lockExpires < Date.now()) {
+    // File lock expired, so clear it out
+    file.lockValue = null;
+    file.lockExpires = null;
+    await storage.updateFileInfo(file);
+
+    // File isn't locked...pass empty Lock in mismatch response
+    return returnLockMismatch(res, "", "File isn't locked");
+  } else if (requestLock != file.lockValue) {
+    // File lock mismatch...pass Lock in mismatch response
+    return returnLockMismatch(res, file.lockValue, "Lock mismatch");
+  } else {
+    // Update the file in storage
+    fileData.data = req._readableState.buffer;
+    fileData.version = (fileVersion++).toString();
+    await storage.updateFile(fileData);
+    res.set("x-wopi-lock", file.lockValue);
+    // Return success 200
+    return returnStatus(res, 200);
   }
 }
 
@@ -312,28 +358,28 @@ async function RenameFile(req, res, file) {
 
     // Ensure the file isn't locked
     if (
-      !file.LockValue ||
-      (!file.LockExpires && file.LockExpires < Date.now())
+      !file.lockValue ||
+      (!file.lockExpires && file.lockExpires < Date.now())
     ) {
       // Update the file with a LockValue and LockExpiration
-      file.LockValue = requestLock;
-      file.LockExpires = getExpiryTime();
+      file.lockValue = requestLock;
+      file.lockExpires = getExpiryTime();
       file.BaseFileName = newFileName;
-      await File.findByIdAndUpdate(file.id);
+      await storage.updateFileInfo(file);
 
       // Return success 200
       return returnStatus(res, 200);
     } else if (file.LockValue === requestLock) {
       // File lock matches existing lock, so we can change the name
-      file.LockExpires = getExpiryTime();
+      file.lockExpires = getExpiryTime();
       file.BaseFileName = newFileName;
-      await File.findByIdAndUpdate(file.id);
+      await storage.updateFileInfo(file);
 
       // Return success 200
       return returnStatus(res, 200);
     } else {
       // The file is locked by someone else...return mismatch
-      return returnLockMismatch(res, file.LockValue, "File already locked");
+      return returnLockMismatch(res, file.lockValue, "File already locked");
     }
   } else {
     // X-WOPI-RequestedName header wasn't included
@@ -373,8 +419,7 @@ function getRequestType(req) {
         switch (wopiOverride) {
           case "LOCK":
             // Check lock type based on presence of OldLock header
-            if (req.headers["x-wopi-oldlock"] != null)
-              requestType = "UnlockAndRelock";
+            if (req.headers["x-wopi-oldlock"]) requestType = "UnlockAndRelock";
             else requestType = "Lock";
             break;
           case "GET_LOCK":

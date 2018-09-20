@@ -7,6 +7,13 @@ module.exports.getFile = async function(fileInfo) {
   return fileData.data.buffer;
 };
 
+module.exports.updateFile = async function(file) {
+  const fileData = await File.findOneAndUpdate({ _id: file.id }, file, {
+    new: true
+  });
+  return fileData.data.buffer;
+};
+
 module.exports.getFileInfo = async function(fileId) {
   const fileData = await FileInfo.findById({ _id: fileId });
   return fileData;
@@ -37,7 +44,7 @@ module.exports.savefile = async function(file) {
 };
 
 module.exports.updateFileInfo = async function(fileInfo) {
-  const updatedFile = await FileInfo.findByIdAndUpdate(
+  const updatedFile = await FileInfo.findOneAndUpdate(
     { _id: fileInfo._id },
     fileInfo,
     { new: true }

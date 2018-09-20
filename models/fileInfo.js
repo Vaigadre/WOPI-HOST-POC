@@ -9,10 +9,10 @@ const FileInfoSchema = new Schema(
     UserId: { type: "String", default: "test_user" },
     Version: { type: "String", default: "1" },
     fileStorageId: { type: "String" },
-    LockValue: { type: "String" },
-    LockExpires: { type: "Date" }
+    lockValue: { type: "String" },
+    lockExpires: { type: "Date" }
   },
-  { versionKey: false, timestamps: true,  }
+  { versionKey: false, timestamps: true }
 );
 
 const FileInfo = (module.exports = mongoose.model("FileInfo", FileInfoSchema));

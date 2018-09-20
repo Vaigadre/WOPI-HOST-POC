@@ -5,6 +5,8 @@ const express = require("express");
 const bodyParser = require("body-parser");
 //const expressValidator = require("express-validator");
 const path = require("path");
+const multer = require("multer");
+var upload = multer({ storage: multer.memoryStorage() });
 
 //var upload = multer({ dest: "uploads/" });
 // controllers
@@ -54,6 +56,12 @@ app.get("/", (req, res) => {
       "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJ0cmljb24iLCJpc3MiOiJodHRwczovL3dvcGkudHJpY29uaW5mb3RlY2guY29tIiwicGVybWlzc2lvbnMiOiJlZGl0LWZpbGVzIiwiaWF0IjoxNTM1NTU1MDg3LCJleHAiOjE1Nzg3NTUwODd9.AOz24xHKh6EgyaXEUzJBVU57dCtGtSjpRsSi4EG08nQaxwxYrzJHtwpfYdyNM1wyfcSU7BEOi_CLIZIaE-J2oPsUil2rdehxi_gBB-JsWOJ2fj2Ca2ZCNva40sDhsyfQdArKT7L8EuNi6xh3Ryx6vcwwNZXTvR7Gg9mybjPVkHM",
     accessTokenTtl: new Date().getTime()
   });
+});
+
+app.post("/file-upload", upload.single("file"), async (req, res) => {
+  console.log(req.file);
+  var result = await storage.savefile(req.file);
+  res.send(result);
 });
 
 app.get("/access-token", (req, res) => {

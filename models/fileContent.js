@@ -6,6 +6,7 @@ const FileContentSchema = new Schema(
     fileName: { type: "String" },
     data: {},
     size: { type: "Number" },
+    Version: { type: "String", default: "1" },
     fileType: { type: "String" }
   },
   {
