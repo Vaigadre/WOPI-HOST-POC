@@ -11,11 +11,11 @@ module.exports.updateFile = async function(file) {
   const fileData = await File.findOneAndUpdate({ _id: file.id }, file, {
     new: true
   });
-  return fileData.data.buffer;
+  return fileData;
 };
 
 module.exports.getFileInfo = async function(fileId) {
-  const fileData = await FileInfo.findById({ _id: fileId });
+  const fileData = await FileInfo.findOne({ _id: fileId });
   return fileData;
 };
 
@@ -33,7 +33,13 @@ module.exports.savefile = async function(file) {
   const newFileInfo = {
     BaseFileName: file.originalname,
     Size: file.size,
-    LockExpires: getExpiryTime()
+    UserFriendlyName: "testXls",
+    SupportsLocks: true,
+    SupportsGetLock: true,
+    SupportsExtendedLockLength: true,
+    UserCanWrite: true,
+    SupportsUpdate: true,
+    AllowExternalMarketplace: true
     // fileStorageId: { type: "String" },
   };
 

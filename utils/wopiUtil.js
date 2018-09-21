@@ -118,6 +118,7 @@ async function CheckFileInfo(req, res, file) {
 
 async function GetFile(req, res, file) {
   const fileBytes = await storage.getFile(file);
+  res.set("X-WOPI-ItemVersion", file.Version);
   return fileBytes;
 }
 
@@ -132,10 +133,10 @@ async function Lock(req, res, file) {
     file.lockValue = requestLock;
     file.lockExpires = getExpiryTime();
     const result = await storage.updateFileInfo(file);
-    console.log(result);
 
     // Return success 200
     res.set("x-wopi-lock", file.lockValue);
+    res.set("X-WOPI-ItemVersion", file.Version);
     return returnStatus(res, 200);
   } else if (file.lockValue === requestLock) {
     // File lock matches existing lock, so refresh lock by extending expiration
@@ -144,6 +145,7 @@ async function Lock(req, res, file) {
     console.log(result);
     // Return success 200
     res.set("x-wopi-lock", file.lockValue);
+    res.set("X-WOPI-ItemVersion", file.Version);
     return returnStatus(res, 200);
   } else {
     // The file is locked by someone else...return mismatch
@@ -164,7 +166,7 @@ async function GetLock(req, res, file) {
   if (!file.lockValue) {
     // File is not locked...return empty X-WOPI-Lock header
     res.set("x-wopi-lock", "");
-
+    res.set("X-WOPI-ItemVersion", file.Version);
     // Return success 200
     return returnStatus(res, 200);
   } else if (file.lockExpires && file.lockExpires < Date.now()) {
@@ -181,7 +183,7 @@ async function GetLock(req, res, file) {
   } else {
     // File has a valid lock, so we need to return it
     res.set("x-wopi-lock", file.lockValue);
-
+    res.set("X-WOPI-ItemVersion", file.Version);
     // Return success 200
     return returnStatus(res, 200);
   }
@@ -215,6 +217,7 @@ async function RefreshLock(req, res, file) {
 
     // Return success 200
     res.set("x-wopi-lock", file.lockValue);
+    res.set("X-WOPI-ItemVersion", file.Version);
     return returnStatus(res, 200);
   }
 }
@@ -249,6 +252,7 @@ async function Unlock(req, res, file) {
 
     // Return success 200
     res.set("x-wopi-lock", file.lockValue);
+    res.set("X-WOPI-ItemVersion", file.Version);
     return returnStatus(res, 200);
   }
 }
@@ -302,10 +306,12 @@ async function PutFile(req, res, file) {
   //Ensure file has valid lock
   if (!file.lockValue) {
     // File isn't locked...pass empty Lock in mismatch response
-    if (req._readableState.buffer.head) {
+    if (req._readableState.buffer.length) {
       fileData.data = req._readableState.buffer.head.data;
-      fileData.version = (fileVersion++).toString();
+      fileData.Version = (fileVersion++).toString();
       await storage.updateFile(fileData);
+      await storage.updateFileInfo({ ...file._doc, Version: fileData.Version });
+      res.set("X-WOPI-ItemVersion", fileData.Version);
       res.set("x-wopi-lock", file.lockValue);
       return returnStatus(res, 200);
     } else {
@@ -324,9 +330,13 @@ async function PutFile(req, res, file) {
     return returnLockMismatch(res, file.lockValue, "Lock mismatch");
   } else {
     // Update the file in storage
-    fileData.data = req._readableState.buffer;
-    fileData.version = (fileVersion++).toString();
+    fileData.data = req._readableState.buffer.length
+      ? req._readableState.buffer.head.data
+      : null;
+    fileData.Version = (++fileVersion).toString();
     await storage.updateFile(fileData);
+    await storage.updateFileInfo({ ...file._doc, Version: fileData.Version });
+    res.set("X-WOPI-ItemVersion", fileData.Version);
     res.set("x-wopi-lock", file.lockValue);
     // Return success 200
     return returnStatus(res, 200);

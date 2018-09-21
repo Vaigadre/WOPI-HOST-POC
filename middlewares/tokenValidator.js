@@ -13,7 +13,6 @@ module.exports.isValidToken = function(req, res, next) {
   validateToken(req.query["access_token"])
     .then(data => {
       if (data) {
-        console.log("validated token successfully.");
         return next();
       }
     })

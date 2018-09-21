@@ -8,6 +8,13 @@ const FileInfoSchema = new Schema(
     Size: { type: "Number" },
     UserId: { type: "String", default: "test_user" },
     Version: { type: "String", default: "1" },
+    UserFriendlyName: { type: "String" },
+    SupportsLocks: { type: "Boolean" },
+    SupportsGetLock: { type: "Boolean" },
+    SupportsExtendedLockLength: { type: "Boolean" },
+    UserCanWrite: { type: "Boolean" },
+    SupportsUpdate: { type: "Boolean" },
+    AllowExternalMarketplace: { type: "Boolean" },
     fileStorageId: { type: "String" },
     lockValue: { type: "String" },
     lockExpires: { type: "Date" }
