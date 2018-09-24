@@ -5,6 +5,7 @@ const storage = require("./fileStorageUtil");
 const app = require("../app");
 const FileInfo = require("../models/fileInfo");
 const fs = require("fs");
+var streamBuffers = require("stream-buffers");
 /**
  * Called at the beginning of every WOPI request to parse the request and determine the request type *
  */
@@ -307,10 +308,15 @@ async function PutFile(req, res, file) {
   if (!file.lockValue) {
     // File isn't locked...pass empty Lock in mismatch response
     if (req._readableState.buffer.length) {
-      fileData.data = req._readableState.buffer.head.data;
+      fileData.data = await getReqStreamData(req);
       fileData.Version = (fileVersion++).toString();
+      fileData.size = fileData.data.length;
       await storage.updateFile(fileData);
-      await storage.updateFileInfo({ ...file._doc, Version: fileData.Version });
+      await storage.updateFileInfo({
+        ...file._doc,
+        Version: fileData.Version,
+        Size: fileData.size
+      });
       res.set("X-WOPI-ItemVersion", fileData.Version);
       res.set("x-wopi-lock", file.lockValue);
       return returnStatus(res, 200);
@@ -329,18 +335,38 @@ async function PutFile(req, res, file) {
     // File lock mismatch...pass Lock in mismatch response
     return returnLockMismatch(res, file.lockValue, "Lock mismatch");
   } else {
-    // Update the file in storage
-    fileData.data = req._readableState.buffer.length
-      ? req._readableState.buffer.head.data
-      : null;
+    fileData.data = await getReqStreamData(req); //req._readableState.buffer.length
+    // : null;
+    console.log(fileData.data);
+    fileData.size = fileData.data.length;
     fileData.Version = (++fileVersion).toString();
     await storage.updateFile(fileData);
-    await storage.updateFileInfo({ ...file._doc, Version: fileData.Version });
+    await storage.updateFileInfo({
+      ...file._doc,
+      Version: fileData.Version,
+      Size: fileData.size
+    });
     res.set("X-WOPI-ItemVersion", fileData.Version);
     res.set("x-wopi-lock", file.lockValue);
     // Return success 200
     return returnStatus(res, 200);
   }
+}
+
+function getReqStreamData(request) {
+  return new Promise((resolve, reject) => {
+    let bufs = [];
+    let totalBufData;
+    request.on("data", chunk => {
+      bufs.push(chunk);
+    });
+    request.on("end", () => {
+      console.log("======Inside getReqStreamData =========");
+      console.log(bufs);
+      totalBufData = Buffer.concat(bufs);
+      resolve(totalBufData);
+    });
+  });
 }
 
 /**
